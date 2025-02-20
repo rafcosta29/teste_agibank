@@ -1,0 +1,131 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  webtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Instalar Google Chrome e ChromeDriver compatíveis
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y unzip wget
+          sudo wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+          sudo apt-get install -y ./google-chrome-stable_current_amd64.deb
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
+          wget -q https://storage.googleapis.com/chrome-for-testing-public/132.0.6834.159/linux64/chromedriver-linux64.zip
+          unzip -o chromedriver-linux64.zip
+          sudo mv chromedriver-linux64/chromedriver /usr/local/bin/
+          sudo chmod +x /usr/local/bin/chromedriver
+          google-chrome --version
+          chromedriver --version
+
+      - name: Instalar dependências e executar testes web
+        run: |
+          cd webtest
+          mvn clean test
+
+      - name: Armazenar logs do WebTest
+        uses: actions/upload-artifact@v4
+        with:
+          name: webtest-results
+          path: webtest/target/surefire-reports/
+
+  apitest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Instalar dependências e executar testes de API
+        run: |
+          cd apitest
+          mvn clean test
+
+      - name: Armazenar relatório ExtentReports
+        uses: actions/upload-artifact@v4
+        with:
+          name: extent-report
+          path: apitest/target/extent-report.html
+  performancetest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+      
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Instalar JMeter e Plugins
+        run: |
+          set -e
+          echo "Atualizando pacotes e instalando dependências..."
+          sudo apt update && sudo apt install -y openjdk-17-jre unzip wget
+          
+          echo "Baixando e instalando o JMeter..."
+          wget -q https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
+          tar -xvzf apache-jmeter-5.6.3.tgz || true
+          sudo mv apache-jmeter-5.6.3 /usr/local/jmeter || true
+          echo 'export PATH=$PATH:/usr/local/jmeter/bin' | sudo tee -a /etc/profile
+          source /etc/profile || true
+          
+          echo "Baixando e instalando o JMeter Plugins Manager..."
+          wget --no-check-certificate https://repo1.maven.org/maven2/kg/apc/jmeter-plugins-manager/1.9/jmeter-plugins-manager-1.9.jar
+          sudo mv jmeter-plugins-manager-1.9.jar /usr/local/jmeter/lib/ext/JMeterPlugins-Manager.jar
+          
+          echo "Baixando e movendo cmdrunner-2.2.jar..."
+          wget --no-check-certificate https://repo1.maven.org/maven2/kg/apc/cmdrunner/2.2/cmdrunner-2.2.jar
+          sudo mv cmdrunner-2.2.jar /usr/local/jmeter/lib/
+          
+          echo "Baixando e movendo jmeter-plugins-casutg-3.0.jar..."
+          wget -P /usr/local/jmeter/lib/ext/ https://repo1.maven.org/maven2/kg/apc/jmeter-plugins-casutg/3.0/jmeter-plugins-casutg-3.0.jar
+
+      - name: Executar testes de performance e gerar relatórios
+        run: |
+          mkdir -p performancetest/results/loadtest_dashboard
+          mkdir -p performancetest/results/spiketest_dashboard
+
+          cd performancetest/bot
+          /usr/local/jmeter/bin/jmeter -n -t loadTest.jmx -l ../results/results_loadtest.csv
+          /usr/local/jmeter/bin/jmeter -n -t spikeTest.jmx -l ../results/results_spiketest.csv
+
+          /usr/local/jmeter/bin/jmeter -g ../results/results_loadtest.csv -o ../results/loadtest_dashboard
+          /usr/local/jmeter/bin/jmeter -g ../results/results_spiketest.csv -o ../results/spiketest_dashboard
+
+      - name: Armazenar arquivos CSV de performance
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results-csv
+          path: performancetest/results/*.csv
+
+      - name: Armazenar dashboards HTML dos testes
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-dashboard
+          path: |
+            performancetest/results/loadtest_dashboard/
+            performancetest/results/spiketest_dashboard/
