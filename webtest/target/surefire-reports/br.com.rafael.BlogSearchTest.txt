@@ -1,4 +1,4 @@
 -------------------------------------------------------------------------------
 Test set: br.com.rafael.BlogSearchTest
 -------------------------------------------------------------------------------
-Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 13.987 s - in br.com.rafael.BlogSearchTest
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 26.671 s - in br.com.rafael.BlogSearchTest
